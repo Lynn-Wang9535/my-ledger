@@ -39,7 +39,40 @@ if not os.path.exists(PERSON_FILE):
 # 数据读取函数
 # =========================
 def get_data():
-    return pd.read_csv(DATA_FILE)
+
+    df = pd.read_csv(DATA_FILE)
+
+    # 自动兼容旧版本
+    if "日期时间" not in df.columns:
+
+        if "日期" in df.columns:
+            df["日期时间"] = df["日期"]
+
+        else:
+            df["日期时间"] = ""
+
+    if "记账人" not in df.columns:
+        df["记账人"] = "自己"
+
+    # 删除旧列
+    if "日期" in df.columns:
+        df = df.drop(columns=["日期"])
+
+    # 保证列顺序
+    columns = [
+        "日期时间",
+        "记账人",
+        "类型",
+        "类别",
+        "金额",
+        "备注"
+    ]
+
+    df = df[columns]
+
+    save_data(df)
+
+    return df
 
 
 def save_data(df):
