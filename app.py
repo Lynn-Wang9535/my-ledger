@@ -22,6 +22,9 @@ st.set_page_config(
 if "edit_mode" not in st.session_state:
     st.session_state.edit_mode = False
 
+if "edited_df" not in st.session_state:
+    st.session_state.edited_df = None
+
 # =========================
 # 初始化文件
 # =========================
@@ -169,24 +172,20 @@ df = get_data()
 # =========================
 if not df.empty:
 
-    # 金额转数字
     df["金额"] = pd.to_numeric(
         df["金额"],
         errors="coerce"
     ).fillna(0)
 
-    # 时间转换
     df["日期时间"] = pd.to_datetime(
         df["日期时间"],
         errors="coerce"
     )
 
-    # 删除坏数据
     df = df.dropna(
         subset=["日期时间"]
     )
 
-    # 年月日
     df["年份"] = (
         df["日期时间"]
         .dt.year
@@ -215,6 +214,11 @@ if not df.empty:
 # =========================
 if not df.empty:
 
+    st.markdown(
+        "<h3>总体统计</h3>",
+        unsafe_allow_html=True
+    )
+
     total_income = df[
         df["类型"] == "收入"
     ]["金额"].sum()
@@ -223,14 +227,7 @@ if not df.empty:
         df["类型"] == "支出"
     ]["金额"].sum()
 
-    total_balance = (
-        total_income - total_outcome
-    )
-
-    st.markdown(
-        "<h3>总体统计</h3>",
-        unsafe_allow_html=True
-    )
+    total_balance = total_income - total_outcome
 
     overview_df = pd.DataFrame([
         {
@@ -256,9 +253,7 @@ if not df.empty:
 
     person_stats = []
 
-    persons = get_persons()
-
-    for person in persons:
+    for person in get_persons():
 
         income = df[
             (df["记账人"] == person) &
@@ -292,24 +287,22 @@ if not df.empty:
 
     category_stats = []
 
-    categories = get_categories()
+    for category in get_categories():
 
-    for category in categories:
-
-        c_income = df[
+        income = df[
             (df["类别"] == category) &
             (df["类型"] == "收入")
         ]["金额"].sum()
 
-        c_outcome = df[
+        outcome = df[
             (df["类别"] == category) &
             (df["类型"] == "支出")
         ]["金额"].sum()
 
         category_stats.append({
             "类别": category,
-            "总收入": c_income,
-            "总支出": c_outcome
+            "总收入": income,
+            "总支出": outcome
         })
 
     st.dataframe(
@@ -389,65 +382,34 @@ if not df.empty:
         ]
 
     # =========================
-    # 当前年月统计
+    # 当前月份统计
     # =========================
     st.markdown(
-        "<h3>当前年月统计</h3>",
+        "<h3>当前筛选统计</h3>",
         unsafe_allow_html=True
     )
 
-    ym_income = filtered_df[
+    filter_income = filtered_df[
         filtered_df["类型"] == "收入"
     ]["金额"].sum()
 
-    ym_outcome = filtered_df[
+    filter_outcome = filtered_df[
         filtered_df["类型"] == "支出"
     ]["金额"].sum()
 
-    ym_stats = pd.DataFrame([
-        {
-            "总收入": ym_income,
-            "总支出": ym_outcome
-        }
-    ])
-
     st.dataframe(
-        ym_stats,
+        pd.DataFrame([
+            {
+                "总收入": filter_income,
+                "总支出": filter_outcome
+            }
+        ]),
         use_container_width=True,
         hide_index=True
     )
 
     # =========================
-    # 当前年月记账人统计
-    # =========================
-    person_month_stats = []
-
-    for person in get_persons():
-
-        p_income = filtered_df[
-            (filtered_df["记账人"] == person) &
-            (filtered_df["类型"] == "收入")
-        ]["金额"].sum()
-
-        p_outcome = filtered_df[
-            (filtered_df["记账人"] == person) &
-            (filtered_df["类型"] == "支出")
-        ]["金额"].sum()
-
-        person_month_stats.append({
-            "记账人": person,
-            "总收入": p_income,
-            "总支出": p_outcome
-        })
-
-    st.dataframe(
-        pd.DataFrame(person_month_stats),
-        use_container_width=True,
-        hide_index=True
-    )
-
-    # =========================
-    # 修改按钮
+    # 表格按钮
     # =========================
     btn1, btn2 = st.columns(2)
 
@@ -470,7 +432,7 @@ if not df.empty:
                 try:
 
                     edited_df = (
-                        st.session_state.edited_df
+                        st.session_state.edited_df.copy()
                     )
 
                     edited_df["金额"] = pd.to_numeric(
@@ -478,17 +440,21 @@ if not df.empty:
                         errors="coerce"
                     ).fillna(0)
 
+                    edited_df = edited_df.reset_index(
+                        drop=True
+                    )
+
                     save_data(edited_df)
 
                     st.session_state.edit_mode = False
 
-                    st.success("保存成功")
+                    st.toast("保存成功")
 
                     st.rerun()
 
-                except:
+                except Exception as e:
 
-                    st.error("保存失败")
+                    st.error(f"保存失败：{e}")
 
     # =========================
     # 编辑模式
@@ -497,7 +463,7 @@ if not df.empty:
 
         edited_df = st.data_editor(
 
-            filtered_df[[
+            df[[
                 "日期时间",
                 "记账人",
                 "类型",
@@ -536,7 +502,9 @@ if not df.empty:
             key="editable_table"
         )
 
-        st.session_state.edited_df = edited_df
+        st.session_state.edited_df = (
+            edited_df.copy()
+        )
 
     # =========================
     # 普通模式
@@ -631,13 +599,13 @@ with st.sidebar.form(
 
             save_data(updated_df)
 
-            st.sidebar.success("保存成功")
+            st.toast("保存成功")
 
             st.rerun()
 
-        except:
+        except Exception as e:
 
-            st.sidebar.error("保存失败")
+            st.sidebar.error(f"保存失败：{e}")
 
 # =========================
 # 管理类别
@@ -689,7 +657,7 @@ with st.sidebar.expander("⚙️ 管理类别"):
 
         save_categories(categories)
 
-        st.success("保存成功")
+        st.toast("保存成功")
 
         st.rerun()
 
@@ -743,6 +711,6 @@ with st.sidebar.expander("👤 管理记账人"):
 
         save_persons(persons)
 
-        st.success("保存成功")
+        st.toast("保存成功")
 
         st.rerun()
