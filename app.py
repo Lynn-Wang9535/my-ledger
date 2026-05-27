@@ -574,12 +574,15 @@ with st.sidebar.form(
 
         try:
 
+            # 金额允许输入 1 或 1.5
             amount = float(amount_text)
 
+            current_df = get_data()
+
+            # 新增数据
             new_row = pd.DataFrame([
                 {
-                    "日期时间":
-                    now_time.strftime(
+                    "日期时间": datetime.now().strftime(
                         "%Y-%m-%d %H:%M:%S"
                     ),
                     "记账人": person,
@@ -590,14 +593,14 @@ with st.sidebar.form(
                 }
             ])
 
-            old_df = get_data()
-
-            updated_df = pd.concat(
-                [old_df, new_row],
+            # 合并数据
+            current_df = pd.concat(
+                [current_df, new_row],
                 ignore_index=True
             )
 
-            save_data(updated_df)
+            # 保存
+            save_data(current_df)
 
             st.toast("保存成功")
 
@@ -605,7 +608,9 @@ with st.sidebar.form(
 
         except Exception as e:
 
-            st.sidebar.error(f"保存失败：{e}")
+            st.sidebar.error(
+                f"保存失败：{e}"
+            )
 
 # =========================
 # 管理类别
