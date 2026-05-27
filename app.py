@@ -164,23 +164,51 @@ st.markdown(
 # =========================
 df = get_data()
 
+# =========================
+# 数据预处理
+# =========================
 if not df.empty:
 
+    # 金额转数字
     df["金额"] = pd.to_numeric(
         df["金额"],
         errors="coerce"
     ).fillna(0)
 
+    # 时间转换
     df["日期时间"] = pd.to_datetime(
         df["日期时间"],
         errors="coerce"
     )
 
-    df["年份"] = df["日期时间"].dt.year.astype(str)
+    # 删除坏数据
+    df = df.dropna(
+        subset=["日期时间"]
+    )
 
-    df["月份"] = df["日期时间"].dt.month.astype(str).str.zfill(2)
+    # 年月日
+    df["年份"] = (
+        df["日期时间"]
+        .dt.year
+        .astype(int)
+        .astype(str)
+    )
 
-    df["日期"] = df["日期时间"].dt.day.astype(str).str.zfill(2)
+    df["月份"] = (
+        df["日期时间"]
+        .dt.month
+        .astype(int)
+        .astype(str)
+        .str.zfill(2)
+    )
+
+    df["日期"] = (
+        df["日期时间"]
+        .dt.day
+        .astype(int)
+        .astype(str)
+        .str.zfill(2)
+    )
 
 # =========================
 # 总体统计
@@ -195,7 +223,14 @@ if not df.empty:
         df["类型"] == "支出"
     ]["金额"].sum()
 
-    total_balance = total_income - total_outcome
+    total_balance = (
+        total_income - total_outcome
+    )
+
+    st.markdown(
+        "<h3>总体统计</h3>",
+        unsafe_allow_html=True
+    )
 
     overview_df = pd.DataFrame([
         {
@@ -212,11 +247,16 @@ if not df.empty:
     )
 
     # =========================
-    # 每个记账人
+    # 记账人统计
     # =========================
-    persons = get_persons()
+    st.markdown(
+        "<h3>记账人统计</h3>",
+        unsafe_allow_html=True
+    )
 
     person_stats = []
+
+    persons = get_persons()
 
     for person in persons:
 
@@ -235,11 +275,6 @@ if not df.empty:
             "总收入": income,
             "总支出": outcome
         })
-
-    st.markdown(
-        "<h3>记账人统计</h3>",
-        unsafe_allow_html=True
-    )
 
     st.dataframe(
         pd.DataFrame(person_stats),
@@ -261,20 +296,20 @@ if not df.empty:
 
     for category in categories:
 
-        total_in = df[
+        c_income = df[
             (df["类别"] == category) &
             (df["类型"] == "收入")
         ]["金额"].sum()
 
-        total_out = df[
+        c_outcome = df[
             (df["类别"] == category) &
             (df["类型"] == "支出")
         ]["金额"].sum()
 
         category_stats.append({
             "类别": category,
-            "总收入": total_in,
-            "总支出": total_out
+            "总收入": c_income,
+            "总支出": c_outcome
         })
 
     st.dataframe(
@@ -298,7 +333,12 @@ if not df.empty:
     # =========================
     col1, col2, col3 = st.columns(3)
 
-    years = sorted(df["年份"].unique())
+    years = sorted(
+        df["年份"]
+        .dropna()
+        .astype(str)
+        .unique()
+    )
 
     selected_year = col1.selectbox(
         "年份",
@@ -306,7 +346,12 @@ if not df.empty:
     )
 
     months = sorted(
-        df[df["年份"] == selected_year]["月份"].unique()
+        df[
+            df["年份"] == selected_year
+        ]["月份"]
+        .dropna()
+        .astype(str)
+        .unique()
     )
 
     selected_month = col2.selectbox(
@@ -318,14 +363,20 @@ if not df.empty:
         df[
             (df["年份"] == selected_year) &
             (df["月份"] == selected_month)
-        ]["日期"].unique()
+        ]["日期"]
+        .dropna()
+        .astype(str)
+        .unique()
     )
 
     selected_day = col3.selectbox(
         "日期",
-        ["全部"] + days
+        ["全部"] + list(days)
     )
 
+    # =========================
+    # 数据筛选
+    # =========================
     filtered_df = df[
         (df["年份"] == selected_year) &
         (df["月份"] == selected_month)
@@ -338,7 +389,7 @@ if not df.empty:
         ]
 
     # =========================
-    # 年月统计
+    # 当前年月统计
     # =========================
     st.markdown(
         "<h3>当前年月统计</h3>",
@@ -396,11 +447,11 @@ if not df.empty:
     )
 
     # =========================
-    # 修改表格按钮
+    # 修改按钮
     # =========================
-    btn_col1, btn_col2 = st.columns([1, 1])
+    btn1, btn2 = st.columns(2)
 
-    with btn_col1:
+    with btn1:
 
         if not st.session_state.edit_mode:
 
@@ -410,7 +461,7 @@ if not df.empty:
 
                 st.rerun()
 
-    with btn_col2:
+    with btn2:
 
         if st.session_state.edit_mode:
 
@@ -418,7 +469,9 @@ if not df.empty:
 
                 try:
 
-                    edited_df = st.session_state.edited_df.copy()
+                    edited_df = (
+                        st.session_state.edited_df
+                    )
 
                     edited_df["金额"] = pd.to_numeric(
                         edited_df["金额"],
@@ -433,7 +486,7 @@ if not df.empty:
 
                     st.rerun()
 
-                except Exception as e:
+                except:
 
                     st.error("保存失败")
 
@@ -461,17 +514,20 @@ if not df.empty:
 
             column_config={
 
-                "记账人": st.column_config.SelectboxColumn(
+                "记账人":
+                st.column_config.SelectboxColumn(
                     "记账人",
                     options=get_persons()
                 ),
 
-                "类型": st.column_config.SelectboxColumn(
+                "类型":
+                st.column_config.SelectboxColumn(
                     "类型",
                     options=["支出", "收入"]
                 ),
 
-                "类别": st.column_config.SelectboxColumn(
+                "类别":
+                st.column_config.SelectboxColumn(
                     "类别",
                     options=get_categories()
                 )
@@ -483,7 +539,7 @@ if not df.empty:
         st.session_state.edited_df = edited_df
 
     # =========================
-    # 查看模式
+    # 普通模式
     # =========================
     else:
 
@@ -554,7 +610,8 @@ with st.sidebar.form(
 
             new_row = pd.DataFrame([
                 {
-                    "日期时间": now_time.strftime(
+                    "日期时间":
+                    now_time.strftime(
                         "%Y-%m-%d %H:%M:%S"
                     ),
                     "记账人": person,
@@ -578,7 +635,7 @@ with st.sidebar.form(
 
             st.rerun()
 
-        except Exception as e:
+        except:
 
             st.sidebar.error("保存失败")
 
