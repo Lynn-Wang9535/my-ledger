@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import os
+import time
 
 # =========================
 # 文件配置
@@ -20,45 +21,53 @@ st.set_page_config(
 # 初始化文件
 # =========================
 if not os.path.exists(DATA_FILE):
+
     df_init = pd.DataFrame(
-        columns=["日期时间", "记账人", "类型", "类别", "金额", "备注"]
+        columns=[
+            "日期时间",
+            "记账人",
+            "类型",
+            "类别",
+            "金额",
+            "备注"
+        ]
     )
+
     df_init.to_csv(DATA_FILE, index=False)
 
 if not os.path.exists(CATEGORY_FILE):
+
     pd.DataFrame({
         "类别": ["餐饮", "购物", "交通"]
     }).to_csv(CATEGORY_FILE, index=False)
 
 if not os.path.exists(PERSON_FILE):
+
     pd.DataFrame({
         "记账人": ["自己"]
     }).to_csv(PERSON_FILE, index=False)
 
 # =========================
-# 数据读取函数
+# 数据函数
 # =========================
 def get_data():
 
     df = pd.read_csv(DATA_FILE)
 
-    # 自动兼容旧版本
+    # 兼容旧版本
     if "日期时间" not in df.columns:
 
         if "日期" in df.columns:
             df["日期时间"] = df["日期"]
-
         else:
             df["日期时间"] = ""
 
     if "记账人" not in df.columns:
         df["记账人"] = "自己"
 
-    # 删除旧列
     if "日期" in df.columns:
         df = df.drop(columns=["日期"])
 
-    # 保证列顺序
     columns = [
         "日期时间",
         "记账人",
@@ -76,134 +85,225 @@ def get_data():
 
 
 def save_data(df):
+
     df.to_csv(DATA_FILE, index=False)
 
 
 def get_categories():
+
     df = pd.read_csv(CATEGORY_FILE)
+
     return df["类别"].dropna().tolist()
 
 
 def save_categories(categories):
+
     pd.DataFrame({
         "类别": categories
     }).to_csv(CATEGORY_FILE, index=False)
 
 
 def get_persons():
+
     df = pd.read_csv(PERSON_FILE)
+
     return df["记账人"].dropna().tolist()
 
 
 def save_persons(persons):
+
     pd.DataFrame({
         "记账人": persons
     }).to_csv(PERSON_FILE, index=False)
 
-
 # =========================
-# 页面标题（缩小）
+# CSS样式
 # =========================
 st.markdown(
     """
-    <h2 style='margin-bottom:10px;'>
-    📊 我的财务概览
-    </h2>
+    <style>
+
+    h2 {
+        font-size: 24px !important;
+    }
+
+    h3 {
+        font-size: 18px !important;
+    }
+
+    div[data-testid="stMetricLabel"] {
+        font-size: 13px !important;
+    }
+
+    div[data-testid="stMetricValue"] {
+        font-size: 18px !important;
+    }
+
+    </style>
     """,
     unsafe_allow_html=True
 )
 
 # =========================
-# 侧边栏：类别管理
+# 页面标题
 # =========================
-with st.sidebar.expander("⚙️ 管理类别", expanded=False):
-
-    categories = get_categories()
-
-    st.write("### 当前类别")
-
-    for i, cat in enumerate(categories):
-
-        col1, col2 = st.columns([4, 1])
-
-        new_name = col1.text_input(
-            f"类别{i}",
-            value=cat,
-            key=f"cat_{i}"
-        )
-
-        if col2.button("删除", key=f"del_cat_{i}"):
-
-            categories.pop(i)
-
-            save_categories(categories)
-
-            st.rerun()
-
-        categories[i] = new_name
-
-    new_category = st.text_input("新增类别")
-
-    if st.button("保存类别"):
-
-        if new_category.strip():
-            categories.append(new_category.strip())
-
-        categories = list(dict.fromkeys(
-            [c.strip() for c in categories if c.strip()]
-        ))
-
-        save_categories(categories)
-
-        st.success("类别已保存")
-
-        st.rerun()
+st.markdown(
+    """
+    <h2>📊 我的财务概览</h2>
+    """,
+    unsafe_allow_html=True
+)
 
 # =========================
-# 侧边栏：记账人管理
+# 读取数据
 # =========================
-with st.sidebar.expander("👤 管理记账人", expanded=False):
+df = get_data()
 
+# =========================
+# 总体统计
+# =========================
+if not df.empty:
+
+    in_sum = df[df["类型"] == "收入"]["金额"].sum()
+
+    out_sum = df[df["类型"] == "支出"]["金额"].sum()
+
+    balance = in_sum - out_sum
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric("总收入", f"¥{in_sum}")
+
+    col2.metric("总支出", f"¥{out_sum}")
+
+    col3.metric("结余", f"¥{balance}")
+
+    # =========================
+    # 各记账人统计
+    # =========================
     persons = get_persons()
 
-    st.write("### 当前记账人")
+    if persons:
 
-    for i, p in enumerate(persons):
+        cols = st.columns(len(persons))
 
-        col1, col2 = st.columns([4, 1])
+        for i, person in enumerate(persons):
 
-        new_p = col1.text_input(
-            f"记账人{i}",
-            value=p,
-            key=f"person_{i}"
-        )
+            person_income = df[
+                (df["记账人"] == person) &
+                (df["类型"] == "收入")
+            ]["金额"].sum()
 
-        if col2.button("删除", key=f"del_person_{i}"):
+            person_outcome = df[
+                (df["记账人"] == person) &
+                (df["类型"] == "支出")
+            ]["金额"].sum()
 
-            persons.pop(i)
+            cols[i].metric(
+                f"{person}的收入",
+                f"¥{person_income}"
+            )
 
-            save_persons(persons)
+            cols[i].metric(
+                f"{person}的支出",
+                f"¥{person_outcome}"
+            )
+
+# =========================
+# 历史明细
+# =========================
+st.markdown(
+    """
+    <h3>历史明细</h3>
+    """,
+    unsafe_allow_html=True
+)
+
+if not df.empty:
+
+    # 增加删除列
+    df_display = df.copy()
+
+    df_display["删除"] = False
+
+    edited_df = st.data_editor(
+
+        df_display,
+
+        use_container_width=True,
+
+        num_rows="fixed",
+
+        hide_index=True,
+
+        column_config={
+
+            "删除": st.column_config.CheckboxColumn(
+                "删除",
+                help="勾选后点击保存修改即可删除"
+            )
+
+        },
+
+        disabled=[],
+    )
+
+    col_save, col_reload = st.columns(2)
+
+    # =========================
+    # 保存修改
+    # =========================
+    with col_save:
+
+        if st.button("💾 保存修改"):
+
+            try:
+
+                # 删除勾选行
+                edited_df = edited_df[
+                    edited_df["删除"] == False
+                ]
+
+                # 删除辅助列
+                edited_df = edited_df.drop(
+                    columns=["删除"]
+                )
+
+                # 金额转数字
+                edited_df["金额"] = pd.to_numeric(
+                    edited_df["金额"]
+                )
+
+                save_data(edited_df)
+
+                msg = st.success("保存成功")
+
+                time.sleep(0.5)
+
+                msg.empty()
+
+                st.rerun()
+
+            except:
+
+                msg = st.error("保存失败")
+
+                time.sleep(0.5)
+
+                msg.empty()
+
+    # =========================
+    # 刷新
+    # =========================
+    with col_reload:
+
+        if st.button("🔄 刷新数据"):
 
             st.rerun()
 
-        persons[i] = new_p
+else:
 
-    new_person = st.text_input("新增记账人")
-
-    if st.button("保存记账人"):
-
-        if new_person.strip():
-            persons.append(new_person.strip())
-
-        persons = list(dict.fromkeys(
-            [p.strip() for p in persons if p.strip()]
-        ))
-
-        save_persons(persons)
-
-        st.success("记账人已保存")
-
-        st.rerun()
+    st.info("还没有记录")
 
 # =========================
 # 侧边栏：新增记录
@@ -213,9 +313,9 @@ st.sidebar.header("📝 新增记录")
 with st.sidebar.form("add_form", clear_on_submit=True):
 
     persons = get_persons()
+
     categories = get_categories()
 
-    # 自动记录当前时间
     now_time = datetime.now()
 
     person = st.selectbox(
@@ -233,7 +333,7 @@ with st.sidebar.form("add_form", clear_on_submit=True):
         categories
     )
 
-    # 金额输入（无 + -）
+    # 不限制1.00
     amount_text = st.text_input(
         "金额",
         placeholder="请输入金额"
@@ -245,198 +345,155 @@ with st.sidebar.form("add_form", clear_on_submit=True):
 
     if submit:
 
-        if not amount_text.strip():
+        try:
 
-            st.warning("请输入金额")
+            amount = float(amount_text)
 
-        else:
+            df = get_data()
 
-            try:
+            new_row = pd.DataFrame(
+                [[
+                    now_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    person,
+                    t_type,
+                    category,
+                    amount,
+                    note
+                ]],
+                columns=df.columns
+            )
 
-                amount = float(amount_text)
+            df = pd.concat(
+                [df, new_row],
+                ignore_index=True
+            )
 
-                df = get_data()
+            save_data(df)
 
-                new_row = pd.DataFrame(
-                    [[
-                        now_time.strftime("%Y-%m-%d %H:%M:%S"),
-                        person,
-                        t_type,
-                        category,
-                        amount,
-                        note
-                    ]],
-                    columns=df.columns
-                )
+            msg = st.sidebar.success("保存成功")
 
-                df = pd.concat(
-                    [df, new_row],
-                    ignore_index=True
-                )
+            time.sleep(0.5)
 
-                save_data(df)
+            msg.empty()
 
-                st.sidebar.success("已保存！")
+            st.rerun()
 
-                st.rerun()
+        except:
 
-            except:
+            msg = st.sidebar.error("保存失败")
 
-                st.warning("金额格式错误")
+            time.sleep(0.5)
+
+            msg.empty()
 
 # =========================
-# 主界面数据
+# 侧边栏：管理类别
 # =========================
-df = get_data()
+with st.sidebar.expander("⚙️ 管理类别"):
 
-if not df.empty:
+    categories = get_categories()
 
-    # 金额统计
-    in_sum = df[df["类型"] == "收入"]["金额"].sum()
+    for i, cat in enumerate(categories):
 
-    out_sum = df[df["类型"] == "支出"]["金额"].sum()
+        col1, col2 = st.columns([4, 1])
 
-    balance = in_sum - out_sum
+        categories[i] = col1.text_input(
+            f"类别{i}",
+            value=cat,
+            key=f"cat_{i}"
+        )
 
-    # 缩小指标字体
-    st.markdown(
-        """
-        <style>
-
-        div[data-testid="stMetric"] {
-            padding: 5px;
-        }
-
-        div[data-testid="stMetricLabel"] {
-            font-size: 14px;
-        }
-
-        div[data-testid="stMetricValue"] {
-            font-size: 20px;
-        }
-
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    c1, c2, c3 = st.columns(3)
-
-    c1.metric("总收入", f"¥{in_sum:.2f}")
-
-    c2.metric("总支出", f"¥{out_sum:.2f}")
-
-    c3.metric("结余", f"¥{balance:.2f}")
-
-    st.write("## 历史明细")
-
-    # =========================
-    # 历史记录编辑
-    # =========================
-    for index, row in df.iterrows():
-
-        with st.expander(
-            f"{row['日期时间']} ｜ {row['类别']} ｜ ¥{row['金额']}"
+        if col2.button(
+            "删除",
+            key=f"del_cat_{i}"
         ):
 
-            col1, col2 = st.columns(2)
+            categories.pop(i)
 
-            # =========================
-            # 左侧
-            # =========================
-            with col1:
+            save_categories(categories)
 
-                new_date = st.text_input(
-                    "日期时间",
-                    value=str(row["日期时间"]),
-                    key=f"date_{index}"
-                )
+            st.rerun()
 
-                new_person = st.text_input(
-                    "记账人",
-                    value=str(row["记账人"]),
-                    key=f"person_edit_{index}"
-                )
+    new_category = st.text_input("新增类别")
 
-                new_type = st.selectbox(
-                    "类型",
-                    ["支出", "收入"],
-                    index=0 if row["类型"] == "支出" else 1,
-                    key=f"type_{index}"
-                )
+    if st.button("保存类别"):
 
-            # =========================
-            # 右侧
-            # =========================
-            with col2:
+        if new_category.strip():
 
-                new_category = st.text_input(
-                    "类别",
-                    value=str(row["类别"]),
-                    key=f"category_{index}"
-                )
+            categories.append(
+                new_category.strip()
+            )
 
-                new_amount = st.text_input(
-                    "金额",
-                    value=str(row["金额"]),
-                    key=f"amount_{index}"
-                )
+        categories = list(dict.fromkeys(
+            [
+                c.strip()
+                for c in categories
+                if c.strip()
+            ]
+        ))
 
-                new_note = st.text_input(
-                    "备注",
-                    value=str(row["备注"]),
-                    key=f"note_{index}"
-                )
+        save_categories(categories)
 
-            c1, c2 = st.columns(2)
+        msg = st.success("保存成功")
 
-            # =========================
-            # 保存修改
-            # =========================
-            with c1:
+        time.sleep(0.5)
 
-                if st.button(
-                    "💾 保存",
-                    key=f"save_{index}"
-                ):
+        msg.empty()
 
-                    try:
+        st.rerun()
 
-                        df.at[index, "日期时间"] = new_date
-                        df.at[index, "记账人"] = new_person
-                        df.at[index, "类型"] = new_type
-                        df.at[index, "类别"] = new_category
-                        df.at[index, "金额"] = float(new_amount)
-                        df.at[index, "备注"] = new_note
+# =========================
+# 侧边栏：管理记账人
+# =========================
+with st.sidebar.expander("👤 管理记账人"):
 
-                        save_data(df)
+    persons = get_persons()
 
-                        st.success("修改成功")
+    for i, p in enumerate(persons):
 
-                        st.rerun()
+        col1, col2 = st.columns([4, 1])
 
-                    except:
+        persons[i] = col1.text_input(
+            f"记账人{i}",
+            value=p,
+            key=f"person_{i}"
+        )
 
-                        st.error("金额格式错误")
+        if col2.button(
+            "删除",
+            key=f"del_person_{i}"
+        ):
 
-            # =========================
-            # 删除记录
-            # =========================
-            with c2:
+            persons.pop(i)
 
-                if st.button(
-                    "🗑 删除",
-                    key=f"delete_{index}"
-                ):
+            save_persons(persons)
 
-                    df = df.drop(index)
+            st.rerun()
 
-                    save_data(df)
+    new_person = st.text_input("新增记账人")
 
-                    st.success("删除成功")
+    if st.button("保存记账人"):
 
-                    st.rerun()
+        if new_person.strip():
 
-else:
+            persons.append(
+                new_person.strip()
+            )
 
-    st.info("还没有记录，从左侧开始记账吧！")
+        persons = list(dict.fromkeys(
+            [
+                p.strip()
+                for p in persons
+                if p.strip()
+            ]
+        ))
+
+        save_persons(persons)
+
+        msg = st.success("保存成功")
+
+        time.sleep(0.5)
+
+        msg.empty()
+
+        st.rerun()
